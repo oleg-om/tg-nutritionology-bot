@@ -22,6 +22,6 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
             cd /var/www/tg-nutritionology-bot
             git pull origin main
-            pm2 stop tg-nutritionology-bot
-            pm2 start tg-nutritionology-bot
+            pm2 stop nutr-bot
+            pm2 start nutr-bot
           EOF
