@@ -51,6 +51,15 @@ function isValidMemberStatus(status) {
   return status === 'member' || status === 'administrator' || status === 'creator';
 }
 
+function escapeHtml(str = '') {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 async function isUserSubscribed(ctx, userId) {
   try {
     const chatMember = await ctx.telegram.getChatMember(CHANNEL_ID, userId);
@@ -89,10 +98,16 @@ bot.start(async (ctx) => {
   if (payload) {
     const guide = findGuideBySlug(payload);
     if (guide) {
-      await ctx.reply(
-        `Гайд: ${guide.title}\n${guide.description || ''}\n\nНажмите кнопку ниже для проверки подписки и скачивания.`,
-        buildGuideActionKeyboard(guide)
-      );
+      const text = [
+        `Гайд: <b>${escapeHtml(guide.title)}</b>`,
+        escapeHtml(guide.description || ''),
+        '',
+        'Нажмите кнопку ниже для проверки подписки и скачивания.'
+      ].join('\n');
+      await ctx.reply(text, {
+        ...buildGuideActionKeyboard(guide),
+        parse_mode: 'HTML'
+      });
       return;
     }
   }
@@ -132,10 +147,16 @@ bot.on('callback_query', async (ctx) => {
       await ctx.answerCbQuery('Гайд не найден', { show_alert: true });
       return;
     }
-    await ctx.editMessageText(
-      `Гайд: ${guide.title}\n${guide.description || ''}\n\nНажмите кнопку ниже для проверки подписки и скачивания.`,
-      buildGuideActionKeyboard(guide)
-    );
+    const text = [
+      `Гайд: <b>${escapeHtml(guide.title)}</b>`,
+      escapeHtml(guide.description || ''),
+      '',
+      'Нажмите кнопку ниже для проверки подписки и скачивания.'
+    ].join('\n');
+    await ctx.editMessageText(text, {
+      ...buildGuideActionKeyboard(guide),
+      parse_mode: 'HTML'
+    });
     await ctx.answerCbQuery();
     return;
   }
@@ -170,6 +191,13 @@ bot.on('callback_query', async (ctx) => {
       { source: fs.createReadStream(filePath), filename: path.basename(filePath) },
       { caption: guide.title }
     );
+    const channelLink = String(CHANNEL_ID).startsWith('@')
+      ? `https://t.me/${String(CHANNEL_ID).replace('@','')}`
+      : null;
+    const thanksText = channelLink
+      ? `Спасибо за внимание!\nСледи за новостями: ${channelLink}`
+      : 'Спасибо за внимание!';
+    await ctx.reply(thanksText);
     return;
   }
   await ctx.answerCbQuery();
