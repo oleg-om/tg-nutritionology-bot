@@ -91,7 +91,9 @@ function buildGuidesKeyboard(guides) {
 
 function buildMenuKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback("Меню", "show_main_menu")],
+    [Markup.button.callback("Меню", "menu:price")],
+    [Markup.button.callback("Получить подарок 🎁", "menu:guides")],
+    [Markup.button.callback("Обо мне", "menu:about-me")],
   ]);
 }
 
@@ -104,35 +106,19 @@ function buildGuideActionKeyboard(guide) {
   ]);
 }
 
-bot.start(async (ctx) => {
-  const payload = (ctx.startPayload || "").trim();
-  if (payload) {
-    const guide = findGuideBySlug(payload);
-    if (guide) {
-      const text = [
-        `Привет! 😇 Меня зовут Дарья Левченко. Я дипломированный нутрициолог и подготовила для тебя подарок 🎁 : Гайд: <b>${escapeHtml(guide.title)}</b>`,
-        "",
-        "",
-        `Для того, чтобы получить его, подпишись на мой телеграм канал: ${CHANNEL_URL}`,
-      ].join("\n");
-      await ctx.reply(text, {
-        ...buildGuideActionKeyboard(guide),
-        parse_mode: "HTML",
-      });
+async function respondWithText(ctx, text, extra = {}) {
+  if (ctx.callbackQuery) {
+    try {
+      await ctx.editMessageText(text, extra);
       return;
+    } catch (err) {
+      // fall back to sending a new message
     }
   }
+  await ctx.reply(text, extra);
+}
 
-  await ctx.reply(
-    "Привет! 🥦 Меня зовут Дарья Левченко. Я дипломированный нутрициолог. Этот бот поможет ответить тебе на самые популярные вопросы. Скорее переходи в меню 👇🏼",
-    {
-      ...buildMenuKeyboard(),
-      parse_mode: "HTML",
-    },
-  );
-});
-
-bot.command("price", async (ctx) => {
+async function sendPrice(ctx) {
   const PRICE_TEXT =
     "💬 Форматы работы:\n" +
     "\n" +
@@ -165,29 +151,97 @@ bot.command("price", async (ctx) => {
     "\n" +
     "Буду Рада помочь решить тебе свою давнюю проблему! 😇 Я за осознанный подход к питанию, без диет и без крайностей.\n";
 
-  await ctx.editMessageText(PRICE_TEXT, {
+  await respondWithText(ctx, PRICE_TEXT, {
     ...Markup.inlineKeyboard([
       [Markup.button.callback("Записаться на консультацию", "show_main_menu")],
       [Markup.button.callback("Вернуться в меню", "show_main_menu")],
     ]),
     parse_mode: "HTML",
   });
-});
+}
 
-bot.command("guides", async (ctx) => {
+async function sendGuides(ctx) {
   const guides = loadGuides();
   if (guides.length === 0) {
-    await ctx.reply("Пока нет доступных гайдов.");
+    await respondWithText(ctx, "Пока нет доступных гайдов.", {
+      ...buildMainMenuKeyboard(),
+    });
     return;
   }
   const listText = ["Список бесплатных гайдов:", ""]
     .concat(guides.map((g) => formatGuideItem(g)))
     .join("\n");
-  await ctx.reply(listText, buildGuidesKeyboard(guides));
+  await respondWithText(ctx, listText, {
+    ...buildGuidesKeyboard(guides),
+  });
+}
+
+const MAIN_MENU_TEXT = [
+  "📋 Главное меню",
+  "",
+  "Доступные команды:",
+  "/price — Цены и форматы работы",
+  "/guides — Получить подарок 🎁",
+  "",
+  "Выбирай нужную кнопку ниже:",
+].join("\n");
+
+bot.start(async (ctx) => {
+  const payload = (ctx.startPayload || "").trim();
+  if (payload) {
+    const guide = findGuideBySlug(payload);
+    if (guide) {
+      const text = [
+        `Привет! 😇 Меня зовут Дарья Левченко. Я дипломированный нутрициолог и подготовила для тебя подарок 🎁 : Гайд: <b>${escapeHtml(guide.title)}</b>`,
+        "",
+        "",
+        `Для того, чтобы получить его, подпишись на мой телеграм канал: ${CHANNEL_URL}`,
+      ].join("\n");
+      await ctx.reply(text, {
+        ...buildGuideActionKeyboard(guide),
+        parse_mode: "HTML",
+      });
+      return;
+    }
+  }
+
+  await ctx.reply(
+    "Привет! 🥦 Меня зовут Дарья Левченко. Я дипломированный нутрициолог. Этот бот поможет ответить тебе на самые популярные вопросы. Скорее переходи в меню 👇🏼",
+    {
+      ...buildMenuKeyboard(),
+      parse_mode: "HTML",
+    },
+  );
+});
+
+bot.command("price", async (ctx) => {
+  await sendPrice(ctx);
+});
+
+bot.command("guides", async (ctx) => {
+  await sendGuides(ctx);
 });
 
 bot.on("callback_query", async (ctx) => {
   const data = ctx.callbackQuery?.data || "";
+  if (data === "show_main_menu") {
+    await ctx.answerCbQuery();
+    await respondWithText(ctx, MAIN_MENU_TEXT, {
+      ...buildMainMenuKeyboard(),
+      parse_mode: "HTML",
+    });
+    return;
+  }
+  if (data === "menu:price") {
+    await ctx.answerCbQuery();
+    await sendPrice(ctx);
+    return;
+  }
+  if (data === "menu:guides") {
+    await ctx.answerCbQuery();
+    await sendGuides(ctx);
+    return;
+  }
   // open:<slug> — show the guide info with action
   if (data.startsWith("open:")) {
     const slug = data.slice("open:".length);
