@@ -2,6 +2,12 @@ import { Telegraf, Markup } from "telegraf";
 import path from "node:path";
 import fs from "node:fs";
 import dotenv from "dotenv";
+import {
+  ABOUT_ME_TEXT,
+  MAIN_MENU_TEXT,
+  PRICE_TEXT,
+  START_TEXT,
+} from "./texts.js";
 
 dotenv.config();
 
@@ -86,14 +92,21 @@ function buildGuidesKeyboard(guides) {
   );
   // Arrange buttons in one per row
   const rows = buttons.map((b) => [b]);
+  rows.push([Markup.button.callback("⬅️ Главное меню", "show_main_menu")]);
   return Markup.inlineKeyboard(rows);
 }
 
 function buildMenuKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback("Цены 📈", "menu:price")],
-    [Markup.button.callback("Получить подарок 🎁", "menu:guides")],
-    [Markup.button.callback("Обо мне", "menu:about-me")],
+    [Markup.button.callback("Меню", "show_main_menu")],
+  ]);
+}
+
+function buildMainMenuKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback("📈 Цены", "menu:price")],
+    [Markup.button.callback("🎁 Получить подарок", "menu:guides")],
+    [Markup.button.callback("ℹ️ Обо мне", "menu:about-me")],
   ]);
 }
 
@@ -119,38 +132,6 @@ async function respondWithText(ctx, text, extra = {}) {
 }
 
 async function sendPrice(ctx) {
-  const PRICE_TEXT =
-    "💬 Форматы работы:\n" +
-    "\n" +
-    "1️⃣ Консультация до 1 часа + рекомендации на месяц \n" +
-    "\n" +
-    "Что входит:\n" +
-    "- индивидуальный разбор твоего текущего питания;\n" +
-    "- рекомендации по улучшению питания;\n" +
-    "- интерпретация имеющихся анализов;\n" +
-    "- при необходимости подберу для тебя БАДы;\n" +
-    "- составлю индивидуальный примерный рацион питания;\n" +
-    "- составлю план действий для улучшения имеющихся проблем и симптомов.\n" +
-    "💵 Стоимость: 3000 руб.\n" +
-    "🎁 в подарок ты получишь конструктор здоровой тарелки питания! \n" +
-    "\n" +
-    "2️⃣ Сопровождение на 1 месяц \n" +
-    "\n" +
-    "Что входит:\n" +
-    "- индивидуальный разбор твоего текущего питания;\n" +
-    "- рекомендации по улучшению питания;\n" +
-    "- интерпретация имеющихся анализов;\n" +
-    "- при необходимости подберу для тебя БАДы;\n" +
-    "- составлю индивидуальный примерный рацион питания;\n" +
-    "- составлю план действий для улучшения имеющихся проблем и симптомов.\n" +
-    "- еженедельная обратная связь по итогам пройденной недели, корректировки и мотивация, возможность задавать вопросы. \n" +
-    "💵 Стоимость: 7000 руб.\n" +
-    "🎁 в подарок ты получишь конструктор здоровой тарелки питания! \n" +
-    "\n" +
-    "🔥 При записи на консультацию в течении сегодняшнего дня сделаю скидку 1000 руб.\n" +
-    "\n" +
-    "Буду Рада помочь решить тебе свою давнюю проблему! 😇 Я за осознанный подход к питанию, без диет и без крайностей.\n";
-
   await respondWithText(ctx, PRICE_TEXT, {
     ...Markup.inlineKeyboard([
       [Markup.button.callback("Записаться на консультацию", "show_main_menu")],
@@ -168,23 +149,30 @@ async function sendGuides(ctx) {
     });
     return;
   }
-  const listText = ["Список бесплатных гайдов:", ""]
-    .concat(guides.map((g) => formatGuideItem(g)))
-    .join("\n");
+  const listText = ["Доступные гайды:", ""].join("\n");
   await respondWithText(ctx, listText, {
     ...buildGuidesKeyboard(guides),
   });
 }
 
-const MAIN_MENU_TEXT = [
-  "📋 Главное меню",
-  "",
-  "Доступные команды:",
-  "/price — Цены и форматы работы",
-  "/guides — Получить подарок 🎁",
-  "",
-  "Выбирай нужную кнопку ниже:",
-].join("\n");
+async function sendStart(ctx) {
+  await respondWithText(ctx, START_TEXT, {
+    ...Markup.inlineKeyboard([
+      [Markup.button.url("Канал", CHANNEL_URL)],
+      [Markup.button.callback("⬅️ Главное меню", "show_main_menu")],
+    ]),
+  });
+}
+
+async function sendAbout(ctx) {
+  await respondWithText(ctx, ABOUT_ME_TEXT, {
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback("📈 Цены", "menu:price")],
+      [Markup.button.url("Запись на консультацию ", CHANNEL_URL)],
+      [Markup.button.callback("⬅️ Вернуться в меню", "show_main_menu")],
+    ]),
+  });
+}
 
 bot.start(async (ctx) => {
   const payload = (ctx.startPayload || "").trim();
@@ -226,10 +214,15 @@ bot.on("callback_query", async (ctx) => {
   const data = ctx.callbackQuery?.data || "";
   if (data === "show_main_menu") {
     await ctx.answerCbQuery();
-    await respondWithText(ctx, MAIN_MENU_TEXT, {
-      ...buildMainMenuKeyboard(),
-      parse_mode: "HTML",
-    });
+    const replyMarkup = buildMainMenuKeyboard().reply_markup;
+    try {
+      await ctx.editMessageReplyMarkup(replyMarkup);
+    } catch (err) {
+      await respondWithText(ctx, MAIN_MENU_TEXT, {
+        reply_markup: replyMarkup,
+        parse_mode: "HTML",
+      });
+    }
     return;
   }
   if (data === "menu:price") {
@@ -240,6 +233,16 @@ bot.on("callback_query", async (ctx) => {
   if (data === "menu:guides") {
     await ctx.answerCbQuery();
     await sendGuides(ctx);
+    return;
+  }
+  if (data === "menu:about-me") {
+    await ctx.answerCbQuery();
+    await sendAbout(ctx);
+    return;
+  }
+  if (data === "menu:start") {
+    await ctx.answerCbQuery();
+    await sendStart(ctx);
     return;
   }
   // open:<slug> — show the guide info with action
@@ -288,18 +291,15 @@ bot.on("callback_query", async (ctx) => {
       });
       return;
     }
-    await ctx.answerCbQuery("Отправляю файл…");
-    await ctx.replyWithDocument(
-      {
-        source: fs.createReadStream(filePath),
-        filename: path.basename(filePath),
-      },
-      { caption: guide.title },
-    );
+    await ctx.answerCbQuery("Проверяю подписку…");
+    await ctx.replyWithDocument({
+      source: fs.createReadStream(filePath),
+      filename: path.basename(filePath),
+    });
 
     const thanksText = [
       "Спасибо за подписку!",
-      "Твой подарок ниже 🎁",
+      "Твой подарок выше 🎁",
       "Надеюсь гайд и мой телеграм канал будут тебе полезны 😊",
     ].join("\n");
     await ctx.editMessageText(thanksText, {
