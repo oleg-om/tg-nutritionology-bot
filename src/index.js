@@ -91,7 +91,7 @@ function buildGuidesKeyboard(guides) {
 
 function buildMenuKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback("Меню", "menu:price")],
+    [Markup.button.callback("Цены 📈", "menu:price")],
     [Markup.button.callback("Получить подарок 🎁", "menu:guides")],
     [Markup.button.callback("Обо мне", "menu:about-me")],
   ]);
