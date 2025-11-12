@@ -18,6 +18,8 @@ npm install
 BOT_TOKEN=123456:ABCDEF_your_bot_token_here
 # Используйте @username для публичного канала или -100XXXXXXXXXX для ID
 CHANNEL_ID=@your_channel_username
+# Ваш Telegram user ID для получения уведомлений о заявках на консультацию
+ADMIN_ID=123456789
 PRICE_TEXT=Актуальная стоимость: 990₽
 ```
 

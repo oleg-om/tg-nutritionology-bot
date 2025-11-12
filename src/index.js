@@ -4,15 +4,24 @@ import fs from "node:fs";
 import dotenv from "dotenv";
 import {
   ABOUT_ME_TEXT,
+  BOOKING_TEXT,
+  GET_GIFT_TEXT,
   MAIN_MENU_TEXT,
   PRICE_TEXT,
   START_TEXT,
 } from "./texts.js";
+import {
+  backToMenuButton,
+  consultationButton,
+  menuButton,
+  priceButton,
+} from "./buttons.js";
 
 dotenv.config();
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHANNEL_ID = process.env.CHANNEL_ID; // e.g. @your_channel or -1001234567890
+const ADMIN_ID = process.env.ADMIN_ID; // Your Telegram user ID
 const CHANNEL_URL = `https://t.me/${String(CHANNEL_ID).replace("@", "")}`;
 const BASE_DIR = path.resolve(process.cwd());
 const GUIDES_PATH = path.join(BASE_DIR, "src", "guides.json");
@@ -92,20 +101,22 @@ function buildGuidesKeyboard(guides) {
   );
   // Arrange buttons in one per row
   const rows = buttons.map((b) => [b]);
-  rows.push([Markup.button.callback("⬅️ Главное меню", "show_main_menu")]);
+  rows.push([menuButton]);
   return Markup.inlineKeyboard(rows);
 }
 
 function buildMenuKeyboard() {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback("Меню", "show_main_menu")],
-  ]);
+  return Markup.inlineKeyboard([[menuButton]]);
 }
 
-function buildMainMenuKeyboard() {
+function buildMainMenuKeyboard(ctx) {
+  const payload = (ctx.startPayload || "").trim();
+
   return Markup.inlineKeyboard([
-    [Markup.button.callback("📈 Цены", "menu:price")],
-    [Markup.button.callback("🎁 Получить подарок", "menu:guides")],
+    [priceButton],
+    ...(payload && [
+      Markup.button.callback("🎁 Получить подарок", "menu:get-gift"),
+    ]),
     [Markup.button.callback("ℹ️ Обо мне", "menu:about-me")],
   ]);
 }
@@ -133,10 +144,7 @@ async function respondWithText(ctx, text, extra = {}) {
 
 async function sendPrice(ctx) {
   await respondWithText(ctx, PRICE_TEXT, {
-    ...Markup.inlineKeyboard([
-      [Markup.button.callback("Записаться на консультацию", "show_main_menu")],
-      [Markup.button.callback("Вернуться в меню", "show_main_menu")],
-    ]),
+    ...Markup.inlineKeyboard([[consultationButton], [backToMenuButton]]),
     parse_mode: "HTML",
   });
 }
@@ -145,7 +153,7 @@ async function sendGuides(ctx) {
   const guides = loadGuides();
   if (guides.length === 0) {
     await respondWithText(ctx, "Пока нет доступных гайдов.", {
-      ...buildMainMenuKeyboard(),
+      ...buildMainMenuKeyboard(ctx),
     });
     return;
   }
@@ -155,11 +163,25 @@ async function sendGuides(ctx) {
   });
 }
 
+async function sendGetGift(ctx) {
+  const payload = (ctx.startPayload || "").trim();
+  if (payload) {
+    const guide = findGuideBySlug(payload);
+    if (guide) {
+      await ctx.reply(GET_GIFT_TEXT, {
+        ...buildGuideActionKeyboard(guide),
+        parse_mode: "HTML",
+      });
+      return;
+    }
+  }
+}
+
 async function sendStart(ctx) {
   await respondWithText(ctx, START_TEXT, {
     ...Markup.inlineKeyboard([
       [Markup.button.url("Канал", CHANNEL_URL)],
-      [Markup.button.callback("⬅️ Главное меню", "show_main_menu")],
+      [menuButton],
     ]),
   });
 }
@@ -167,11 +189,44 @@ async function sendStart(ctx) {
 async function sendAbout(ctx) {
   await respondWithText(ctx, ABOUT_ME_TEXT, {
     ...Markup.inlineKeyboard([
-      [Markup.button.callback("📈 Цены", "menu:price")],
-      [Markup.button.url("Запись на консультацию ", CHANNEL_URL)],
-      [Markup.button.callback("⬅️ Вернуться в меню", "show_main_menu")],
+      [priceButton],
+      [consultationButton],
+      [backToMenuButton],
     ]),
   });
+}
+
+async function notifyAdminAboutConsultation(ctx) {
+  if (!ADMIN_ID) {
+    console.warn("ADMIN_ID is not set. Cannot send notification.");
+    return;
+  }
+
+  const user = ctx.from;
+  const userName = user.first_name || "";
+  const userLastName = user.last_name || "";
+  const userFullName =
+    [userName, userLastName].filter(Boolean).join(" ") || "Не указано";
+  const username = user.username ? `@${user.username}` : "Не указан";
+  const userId = user.id;
+  const userLink = `tg://user?id=${userId}`;
+
+  const notificationText = [
+    "🔔 <b>Новая заявка на консультацию</b>",
+    "",
+    `<b>Имя:</b> ${escapeHtml(userFullName)}`,
+    `<b>Username:</b> ${username}`,
+    `<b>ID:</b> <code>${userId}</code>`,
+    `<b>Связаться:</b> <a href="${userLink}">Написать пользователю</a>`,
+  ].join("\n");
+
+  try {
+    await bot.telegram.sendMessage(ADMIN_ID, notificationText, {
+      parse_mode: "HTML",
+    });
+  } catch (e) {
+    console.error("Failed to send notification to admin:", e);
+  }
 }
 
 bot.start(async (ctx) => {
@@ -214,7 +269,7 @@ bot.on("callback_query", async (ctx) => {
   const data = ctx.callbackQuery?.data || "";
   if (data === "show_main_menu") {
     await ctx.answerCbQuery();
-    const replyMarkup = buildMainMenuKeyboard().reply_markup;
+    const replyMarkup = buildMainMenuKeyboard(ctx).reply_markup;
     try {
       await ctx.editMessageReplyMarkup(replyMarkup);
     } catch (err) {
@@ -230,9 +285,9 @@ bot.on("callback_query", async (ctx) => {
     await sendPrice(ctx);
     return;
   }
-  if (data === "menu:guides") {
+  if (data === "menu:get-gift") {
     await ctx.answerCbQuery();
-    await sendGuides(ctx);
+    await sendGetGift(ctx);
     return;
   }
   if (data === "menu:about-me") {
@@ -243,6 +298,20 @@ bot.on("callback_query", async (ctx) => {
   if (data === "menu:start") {
     await ctx.answerCbQuery();
     await sendStart(ctx);
+    return;
+  }
+  if (data === "book_consultation") {
+    await ctx.answerCbQuery("Отправляю заявку…");
+    await notifyAdminAboutConsultation(ctx);
+    await ctx.reply(BOOKING_TEXT, {
+      ...Markup.inlineKeyboard([
+        [priceButton],
+        ...(payload && [
+          Markup.button.callback("🎁 Получить подарок", "menu:get-gift"),
+        ]),
+        [Markup.button.callback("ℹ️ Обо мне", "menu:about-me")],
+      ]),
+    });
     return;
   }
   // open:<slug> — show the guide info with action
@@ -326,7 +395,6 @@ bot.launch().then(async () => {
     await bot.telegram.setMyCommands([
       { command: "price", description: "Цены" },
       { command: "about-me", description: "Обо мне" },
-      { command: "guides", description: "Получить подарок 🎁" },
     ]);
   } catch (e) {
     console.error("Failed to set bot commands", e);
