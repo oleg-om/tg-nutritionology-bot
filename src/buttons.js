@@ -38,6 +38,6 @@ export const aboutMeButton = Markup.button.callback(
 );
 
 export const checkSubscriptionButton = (guide) =>
-  Markup.button.callback("Проверить подписку", `dl:${guide.slug}`);
+  Markup.button.callback("Проверить подписку", `dl:${guide?.slug}`);
 
 export const subscribeButton = Markup.button.url("Подписаться", CHANNEL_URL);

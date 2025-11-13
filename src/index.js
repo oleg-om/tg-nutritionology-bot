@@ -6,8 +6,7 @@ import {
   ABOUT_ME_TEXT,
   APPROVE_BOOKING_TEXT,
   BOOKING_TEXT,
-  GET_GIFT_TEXT,
-  GUIDE_NOT_FOUND,
+  GUIDE_NOT_FOUND_SUBSCRIPTION,
   MAIN_MENU_TEXT,
   PRICE_TEXT,
   START_TEXT,
@@ -99,7 +98,7 @@ async function isUserSubscribed(ctx, userId) {
 
 function buildGuidesKeyboard(guides) {
   const buttons = guides.map((g) =>
-    Markup.button.callback(g.title, `dl:${g.slug}`),
+    Markup.button.callback(g.title, `open:${g.slug}`),
   );
   // Arrange buttons in one per row
   const rows = buttons.map((b) => [b]);
@@ -142,22 +141,6 @@ async function sendGuides(ctx) {
   await ctx.reply(listText, {
     ...buildGuidesKeyboard(guides),
   });
-}
-
-async function sendGetGift(ctx) {
-  const payload = (ctx.startPayload || "").trim();
-  if (payload) {
-    const guide = findGuideBySlug(payload);
-    if (guide) {
-      await ctx.reply(GET_GIFT_TEXT, {
-        ...Markup.inlineKeyboard([
-          [subscribeButton, checkSubscriptionButton(guide)],
-        ]),
-        parse_mode: "HTML",
-      });
-      return;
-    }
-  }
 }
 
 async function sendStart(ctx) {
@@ -297,6 +280,56 @@ bot.on("callback_query", async (ctx) => {
     });
     return;
   }
+  // ope:<slug> — verify subscription and send file
+  if (data.startsWith("open:")) {
+    const slug = data.slice("open:".length);
+    const guide = findGuideBySlug(slug);
+    if (!guide) {
+      await ctx.answerCbQuery("Гайд не найден", { show_alert: true });
+      return;
+    }
+    const userId = ctx.from?.id;
+    const subscribed = await isUserSubscribed(ctx, userId);
+    if (!subscribed) {
+      await ctx.answerCbQuery(undefined);
+      await ctx.reply(
+        [
+          `Для того, чтобы получить подарок 🎁 - гайд <b>${escapeHtml(guide.title)}</b>, подпишись на мой телеграм канал ${CHANNEL_URL}`,
+        ].join("\n"),
+        {
+          ...Markup.inlineKeyboard([
+            [subscribeButton],
+            [checkSubscriptionButton(guide)],
+          ]),
+          parse_mode: "HTML",
+        },
+      );
+      return;
+    }
+    const filePath = getGuideFileAbsolutePath(guide.file);
+    if (!fs.existsSync(filePath)) {
+      await ctx.answerCbQuery("Файл гайда не найден на сервере", {
+        show_alert: true,
+      });
+      return;
+    }
+    await ctx.answerCbQuery("Проверяю подписку…");
+    await ctx.reply(
+      [
+        "Твой подарок ниже 🎁",
+        `Надеюсь гайд и мой телеграм канал ${CHANNEL_URL} будут тебе полезны 😊`,
+      ].join("\n"),
+      {
+        ...buildMenuKeyboard(),
+        parse_mode: "HTML",
+      },
+    );
+    await ctx.replyWithDocument({
+      source: fs.createReadStream(filePath),
+      filename: path.basename(filePath),
+    });
+    return;
+  }
   // dl:<slug> — verify subscription and send file
   if (data.startsWith("dl:")) {
     const slug = data.slice("dl:".length);
@@ -309,8 +342,11 @@ bot.on("callback_query", async (ctx) => {
     const subscribed = await isUserSubscribed(ctx, userId);
     if (!subscribed) {
       await ctx.answerCbQuery(undefined);
-      await ctx.reply(GUIDE_NOT_FOUND, {
-        ...Markup.inlineKeyboard([[priceButton], [aboutMeButton]]),
+      await ctx.reply(GUIDE_NOT_FOUND_SUBSCRIPTION, {
+        ...Markup.inlineKeyboard([
+          [subscribeButton],
+          [checkSubscriptionButton(guide)],
+        ]),
       });
       return;
     }
