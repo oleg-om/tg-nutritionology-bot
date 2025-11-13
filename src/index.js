@@ -7,18 +7,22 @@ import {
   APPROVE_BOOKING_TEXT,
   BOOKING_TEXT,
   GET_GIFT_TEXT,
+  GUIDE_NOT_FOUND,
   MAIN_MENU_TEXT,
   PRICE_TEXT,
   START_TEXT,
+  THANKS_TEXT,
 } from "./texts.js";
 import {
   aboutMeButton,
   approveConsultationButton,
   backToMenuButton,
+  checkSubscriptionButton,
   consultationButton,
   getGiftButton,
   menuButton,
   priceButton,
+  subscribeButton,
 } from "./buttons.js";
 
 dotenv.config();
@@ -93,12 +97,6 @@ async function isUserSubscribed(ctx, userId) {
   }
 }
 
-function formatGuideItem(guide) {
-  const title = guide.title || "Без названия";
-  const description = guide.description ? ` — ${guide.description}` : "";
-  return `• ${title}${description}`;
-}
-
 function buildGuidesKeyboard(guides) {
   const buttons = guides.map((g) =>
     Markup.button.callback(g.title, `open:${g.slug}`),
@@ -125,29 +123,8 @@ function buildMainMenuKeyboard(ctx) {
   ]);
 }
 
-function buildGuideActionKeyboard(guide) {
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.url("Подписаться", CHANNEL_URL),
-      Markup.button.callback("Проверить подписку", `dl:${guide.slug}`),
-    ],
-  ]);
-}
-
-async function respondWithText(ctx, text, extra = {}) {
-  if (ctx.callbackQuery) {
-    try {
-      await ctx.editMessageText(text, extra);
-      return;
-    } catch (err) {
-      // fall back to sending a new message
-    }
-  }
-  await ctx.reply(text, extra);
-}
-
 async function sendPrice(ctx) {
-  await respondWithText(ctx, PRICE_TEXT, {
+  await ctx.reply(PRICE_TEXT, {
     ...Markup.inlineKeyboard([[consultationButton], [backToMenuButton]]),
     parse_mode: "HTML",
   });
@@ -156,13 +133,13 @@ async function sendPrice(ctx) {
 async function sendGuides(ctx) {
   const guides = loadGuides();
   if (guides.length === 0) {
-    await respondWithText(ctx, "Пока нет доступных гайдов.", {
+    await ctx.reply("Пока нет доступных гайдов.", {
       ...buildMainMenuKeyboard(ctx),
     });
     return;
   }
   const listText = ["Доступные гайды:", ""].join("\n");
-  await respondWithText(ctx, listText, {
+  await ctx.reply(listText, {
     ...buildGuidesKeyboard(guides),
   });
 }
@@ -173,7 +150,9 @@ async function sendGetGift(ctx) {
     const guide = findGuideBySlug(payload);
     if (guide) {
       await ctx.reply(GET_GIFT_TEXT, {
-        ...buildGuideActionKeyboard(guide),
+        ...Markup.inlineKeyboard([
+          [subscribeButton, checkSubscriptionButton(guide)],
+        ]),
         parse_mode: "HTML",
       });
       return;
@@ -182,7 +161,7 @@ async function sendGetGift(ctx) {
 }
 
 async function sendStart(ctx) {
-  await respondWithText(ctx, START_TEXT, {
+  await ctx.reply(START_TEXT, {
     ...Markup.inlineKeyboard([
       [Markup.button.url("Канал", CHANNEL_URL)],
       [menuButton],
@@ -191,7 +170,7 @@ async function sendStart(ctx) {
 }
 
 async function sendAbout(ctx) {
-  await respondWithText(ctx, ABOUT_ME_TEXT, {
+  await ctx.reply(ABOUT_ME_TEXT, {
     ...Markup.inlineKeyboard([
       [priceButton],
       [consultationButton],
@@ -245,7 +224,9 @@ bot.start(async (ctx) => {
         `Для того, чтобы получить его, подпишись на мой телеграм канал: ${CHANNEL_URL}`,
       ].join("\n");
       await ctx.reply(text, {
-        ...buildGuideActionKeyboard(guide),
+        ...Markup.inlineKeyboard([
+          [subscribeButton, checkSubscriptionButton(guide)],
+        ]),
         parse_mode: "HTML",
       });
       return;
@@ -273,15 +254,9 @@ bot.on("callback_query", async (ctx) => {
   const data = ctx.callbackQuery?.data || "";
   if (data === "show_main_menu") {
     await ctx.answerCbQuery();
-    const replyMarkup = buildMainMenuKeyboard(ctx).reply_markup;
-    try {
-      await ctx.editMessageReplyMarkup(replyMarkup);
-    } catch (err) {
-      await respondWithText(ctx, MAIN_MENU_TEXT, {
-        reply_markup: replyMarkup,
-        parse_mode: "HTML",
-      });
-    }
+    await ctx.reply(MAIN_MENU_TEXT, {
+      ...Markup.inlineKeyboard([[priceButton, aboutMeButton], [getGiftButton]]),
+    });
     return;
   }
   if (data === "menu:price") {
@@ -307,7 +282,10 @@ bot.on("callback_query", async (ctx) => {
   if (data === "book_consultation_info") {
     await notifyAdminAboutConsultation(ctx);
     await ctx.reply(APPROVE_BOOKING_TEXT, {
-      ...Markup.inlineKeyboard([[approveConsultationButton, backToMenuButton]]),
+      ...Markup.inlineKeyboard([
+        [approveConsultationButton],
+        [backToMenuButton],
+      ]),
     });
     return;
   }
@@ -315,11 +293,7 @@ bot.on("callback_query", async (ctx) => {
     await ctx.answerCbQuery("Отправляю заявку…");
     await notifyAdminAboutConsultation(ctx);
     await ctx.reply(BOOKING_TEXT, {
-      ...Markup.inlineKeyboard([
-        [priceButton],
-        ...(payload && [getGiftButton]),
-        [aboutMeButton],
-      ]),
+      ...Markup.inlineKeyboard([[priceButton], [aboutMeButton]]),
     });
     return;
   }
@@ -351,15 +325,9 @@ bot.on("callback_query", async (ctx) => {
     const subscribed = await isUserSubscribed(ctx, userId);
     if (!subscribed) {
       await ctx.answerCbQuery(undefined);
-      await ctx.reply(
-        [
-          "Похоже, вы не подписаны на наш канал.",
-          "Подпишитесь и снова нажмите кнопку:",
-          String(CHANNEL_ID).startsWith("@")
-            ? CHANNEL_URL
-            : "Откройте канал в Telegram",
-        ].join("\n"),
-      );
+      await ctx.reply(GUIDE_NOT_FOUND, {
+        ...Markup.inlineKeyboard([[priceButton], [aboutMeButton]]),
+      });
       return;
     }
     const filePath = getGuideFileAbsolutePath(guide.file);
@@ -370,19 +338,13 @@ bot.on("callback_query", async (ctx) => {
       return;
     }
     await ctx.answerCbQuery("Проверяю подписку…");
+    await ctx.reply(THANKS_TEXT, {
+      ...buildMenuKeyboard(),
+      parse_mode: "HTML",
+    });
     await ctx.replyWithDocument({
       source: fs.createReadStream(filePath),
       filename: path.basename(filePath),
-    });
-
-    const thanksText = [
-      "Спасибо за подписку!",
-      "Твой подарок выше 🎁",
-      "Надеюсь гайд и мой телеграм канал будут тебе полезны 😊",
-    ].join("\n");
-    await ctx.editMessageText(thanksText, {
-      ...buildMenuKeyboard(),
-      parse_mode: "HTML",
     });
     return;
   }
