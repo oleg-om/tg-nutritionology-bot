@@ -298,8 +298,7 @@ bot.on("callback_query", async (ctx) => {
         ].join("\n"),
         {
           ...Markup.inlineKeyboard([
-            [subscribeButton],
-            [checkSubscriptionButton(guide)],
+            [subscribeButton, checkSubscriptionButton(guide)],
           ]),
           parse_mode: "HTML",
         },
@@ -344,8 +343,7 @@ bot.on("callback_query", async (ctx) => {
       await ctx.answerCbQuery(undefined);
       await ctx.reply(GUIDE_NOT_FOUND_SUBSCRIPTION, {
         ...Markup.inlineKeyboard([
-          [subscribeButton],
-          [checkSubscriptionButton(guide)],
+          [subscribeButton, checkSubscriptionButton(guide)],
         ]),
       });
       return;
