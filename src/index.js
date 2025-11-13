@@ -99,7 +99,7 @@ async function isUserSubscribed(ctx, userId) {
 
 function buildGuidesKeyboard(guides) {
   const buttons = guides.map((g) =>
-    Markup.button.callback(g.title, `open:${g.slug}`),
+    Markup.button.callback(g.title, `dl:${g.slug}`),
   );
   // Arrange buttons in one per row
   const rows = buttons.map((b) => [b]);
@@ -138,7 +138,7 @@ async function sendGuides(ctx) {
     });
     return;
   }
-  const listText = ["Доступные гайды:", ""].join("\n");
+  const listText = ["🎁 Доступные гайды:", ""].join("\n");
   await ctx.reply(listText, {
     ...buildGuidesKeyboard(guides),
   });
@@ -266,7 +266,7 @@ bot.on("callback_query", async (ctx) => {
   }
   if (data === "menu:get-gift") {
     await ctx.answerCbQuery();
-    await sendGetGift(ctx);
+    await sendGuides(ctx);
     return;
   }
   if (data === "menu:about-me") {
@@ -295,22 +295,6 @@ bot.on("callback_query", async (ctx) => {
     await ctx.reply(BOOKING_TEXT, {
       ...Markup.inlineKeyboard([[priceButton], [aboutMeButton]]),
     });
-    return;
-  }
-  // open:<slug> — show the guide info with action
-  if (data.startsWith("open:")) {
-    const slug = data.slice("open:".length);
-    const guide = findGuideBySlug(slug);
-    if (!guide) {
-      await ctx.answerCbQuery("Гайд не найден", { show_alert: true });
-      return;
-    }
-    const text = ["111111"].join("\n");
-    await ctx.editMessageText(text, {
-      ...buildMenuKeyboard(),
-      parse_mode: "HTML",
-    });
-    await ctx.answerCbQuery();
     return;
   }
   // dl:<slug> — verify subscription and send file
