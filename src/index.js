@@ -4,6 +4,7 @@ import fs from "node:fs";
 import dotenv from "dotenv";
 import {
   ABOUT_ME_TEXT,
+  APPROVE_BOOKING_TEXT,
   BOOKING_TEXT,
   GET_GIFT_TEXT,
   MAIN_MENU_TEXT,
@@ -11,8 +12,11 @@ import {
   START_TEXT,
 } from "./texts.js";
 import {
+  aboutMeButton,
+  approveConsultationButton,
   backToMenuButton,
   consultationButton,
+  getGiftButton,
   menuButton,
   priceButton,
 } from "./buttons.js";
@@ -300,16 +304,21 @@ bot.on("callback_query", async (ctx) => {
     await sendStart(ctx);
     return;
   }
+  if (data === "book_consultation_info") {
+    await notifyAdminAboutConsultation(ctx);
+    await ctx.reply(APPROVE_BOOKING_TEXT, {
+      ...Markup.inlineKeyboard([[approveConsultationButton, backToMenuButton]]),
+    });
+    return;
+  }
   if (data === "book_consultation") {
     await ctx.answerCbQuery("Отправляю заявку…");
     await notifyAdminAboutConsultation(ctx);
     await ctx.reply(BOOKING_TEXT, {
       ...Markup.inlineKeyboard([
         [priceButton],
-        ...(payload && [
-          Markup.button.callback("🎁 Получить подарок", "menu:get-gift"),
-        ]),
-        [Markup.button.callback("ℹ️ Обо мне", "menu:about-me")],
+        ...(payload && [getGiftButton]),
+        [aboutMeButton],
       ]),
     });
     return;
