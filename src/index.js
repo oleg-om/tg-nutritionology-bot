@@ -162,6 +162,37 @@ async function sendAbout(ctx) {
   });
 }
 
+async function notifyAdmin(ctx, msg) {
+  if (!ADMIN_ID) {
+    console.warn("ADMIN_ID is not set. Cannot send notification.");
+    return;
+  }
+
+  const user = ctx.from;
+  const userName = user.first_name || "";
+  const userLastName = user.last_name || "";
+  const userFullName =
+    [userName, userLastName].filter(Boolean).join(" ") || "Не указано";
+  const username = user.username ? `@${user.username}` : "Не указан";
+  const userId = user.id;
+  const userLink = `tg://user?id=${userId}`;
+
+  const notificationText = [
+    `🔔 Событие: ${msg}`,
+    "",
+    `<b>Имя:</b> ${escapeHtml(userFullName)}`,
+    `<b>Username:</b> <a href="${userLink}">${username}</a>`,
+  ].join("\n");
+
+  try {
+    await bot.telegram.sendMessage(ADMIN_ID, notificationText, {
+      parse_mode: "HTML",
+    });
+  } catch (e) {
+    console.error("Failed to send notification to admin:", e);
+  }
+}
+
 async function notifyAdminAboutConsultation(ctx) {
   if (!ADMIN_ID) {
     console.warn("ADMIN_ID is not set. Cannot send notification.");
@@ -212,6 +243,11 @@ bot.start(async (ctx) => {
         ]),
         parse_mode: "HTML",
       });
+      await notifyAdmin(
+        ctx,
+        `Пользователь перешел по ссылке ${CHANNEL_URL}?start=${escapeHtml(guide.slug)}`,
+      );
+
       return;
     }
   }
@@ -327,6 +363,10 @@ bot.on("callback_query", async (ctx) => {
       source: fs.createReadStream(filePath),
       filename: path.basename(filePath),
     });
+    await notifyAdmin(
+      ctx,
+      `Пользователь скачал гайд - ${escapeHtml(guide.title)}`,
+    );
     return;
   }
   // dl:<slug> — verify subscription and send file
